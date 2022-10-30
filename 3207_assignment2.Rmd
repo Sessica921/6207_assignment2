@@ -1,0 +1,183 @@
+---
+title: "3207_assignment2"
+author: "u7457409 ShiYu Tang"
+date: "2022-10-23"
+output: html_document
+---
+
+[My GitHub Repository]:(https://github.com/Sessica921/6207_assignment2)
+
+```{r}
+# First, library the packages we will need
+library(rmarkdown)
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r}
+# Then, we load the data
+data1 <- read_csv("OA_activitydat_20190302_BIOL3207.csv")
+data2 <- read_csv("clark_paper_data.csv")
+data3 <- read_csv("ocean_meta_data.csv")
+explain <- read_csv("meta-data_ocean_meta.csv")
+```
+# 1. generate the summary statistics for each of the fish species’ average activity for each treatment.
+
+```{r}
+sum_data <- data1 %>% group_by(species, treatment) %>%
+              summarise(mean = mean(activity, na.rm = TRUE),
+                        sd = sd(activity, na.rm = TRUE),
+                        n = length(unique(animal_id))) %>%
+              rename(Species = "species")
+```
+# 2. merge the summary statistics with metadata.
+```{r}
+bind_data <- cbind(data2, sum_data)
+```
+
+# 3. merge the combined summary statistics and metadata into the larger meta-analysis dataset
+```{r}
+final_data <- pivot_wider(bind_data, names_from = treatment,
+                     names_glue = "{treatment}_{.value}",
+                     values_from = c("mean", "sd", "n"))
+
+dim(data3)
+dim(final_data)
+
+# Then we rename the colnames so they could match data3
+final_data2 <- final_data %>% rename("oa.mean" = CO2_mean,
+                            "oa.sd" = CO2_sd,
+                            "oa.n" = CO2_n,
+                            "ctrl.mean" = control_mean,
+                            "ctrl.sd" = control_sd,
+                            "ctrl.n" = control_n)
+
+# Reorder col names
+final_data2 <- final_data2[names(data3)]
+
+# Bind them
+data <- rbind(data3, final_data2)
+```
+
+
+# 4. calculate the log response ratio (lnRR) effect size for every row of the dataframe using metafor’s escalc() function
+
+## The log response ratio (LRR) is a formal effect size measure that quantifies functional relationships in terms of proportionate change. 
+$$
+LRR = \log \left( \frac{Mean level in phase B}{Mean level in phase A}\right)
+$$
+
+
+```{r}
+# Load packages
+library(pacman)
+library(orchaRd)
+pacman::p_load(metafor, flextable, tidyverse, orchaRd, pander, mathjaxr, equatags, vembedr, tidyverse)
+p_load(bookdown, devtools, tidyverse, ggforce, GGally, flextable, latex2exp, png, magick, metafor, MASS, emmeans, R.rsp)
+
+```
+
+```{r}
+lnRR_data <- metafor::escalc(measure = "ROM", m1i = ctrl.mean, m2i = oa.mean, sd1i = ctrl.sd, sd2i = oa.sd, n1i = ctrl.n, n2i = oa.n, data = data, var.names = c("lnRR", "V_lnRR")) %>% mutate(residual = 1:n())
+
+lnRR_data %>% slice_head(n = 5)
+```
+# 5. meta-analytic model fitted to the data that controls for the sampling variance of lnRR.
+```{r}
+MLMA <- metafor::rma.mv(yi= lnRR ~ 1, V = V_lnRR, 
+                   method="REML",
+                   random=list(~1|Study,
+                               ~1|residual), 
+                   dfs = "contain",
+                   test="t",
+                   data=lnRR_data)
+MLMA
+
+```
+# 6. paragraph of the findings 
+
+## presentation and interpretation of overall meta-analytic mean and measures of uncertainty around the mean estimate
+```{r}
+predict(MLMA)
+```
+
+## Calculate I2:
+
+```{r}
+i2_vals <- orchaRd::i2_ml(MLMA)
+i2 <- tibble(type = firstup(gsub("I2_", "",names(i2_vals))), I2 = i2_vals)
+flextable(i2) %>% 
+    align(part = "header", align = "center") %>% 
+  compose(part = "header", j = 1, value = as_paragraph(as_b("Type"))) %>% 
+  compose(part = "header", j = 2, value = as_paragraph(as_b("I"), as_b(as_sup("2")), as_b("(%)")))
+```
+## Forest plot
+
+```{r}
+orchaRd::orchard_plot(MLMA, mod = "1", group = "Study", data = lnRR_data, xlab = "log response ratio(lnRR)", angle = 45)
+```
+Knowing this, we can extract the 95% confidence intervals which range from `r MLMA$ci.lb ` to `r MLMA$ci.ub `. In other words, 95% of the time we would expect the true mean to fall between lnRR values of `r MLMA$ci.lb ` to `r MLMA$ci.ub `. 
+
+That's to say, if we were to repeat the experiment many times, 95% of the confidence intervals constructed would contain the true meta-analytic mean.
+
+
+
+#7. Funnel plot for visually assessing the possibility of publication bias.
+```{r}
+metafor::funnel(x = lnRR_data$lnRR, vi = lnRR_data$V_lnRR, 
+                yaxis = "seinv", digits = 2,
+                xlim=c(-10,10),ylim=c(1,100),
+                level = c(0.1, 0.05, 0.01), 
+                shade = c("white", "gray55", "gray 75"), las = 1, 
+                xlab = "Correlation Coefficient (r)", legend = TRUE)
+```
+
+# 8. Time-lag plot assessing how effect sizes may or may not have changed through time
+```{r}
+ggplot(lnRR_data, aes(y = lnRR, x = Year..online., size = 1/sqrt(V_lnRR))) + geom_point(alpha = 0.30) + geom_smooth(method = lm, col = "red", show.legend = FALSE) + labs(x = "Publication Year", y = "lnRR", size = "Precision (1/SE)") + theme_classic()
+```
+
+# 9. Formal meta-regression model that includes year as a moderator (fixed effect) to test for time-lag bias
+```{r}
+# Including sampling variance as moderator
+metareg_time <- rma.mv(lnRR ~ Year..online., V = V_lnRR, 
+                    random = list(~1|Study, 
+                                  ~1|residual), 
+                    test = "t", dfs = "contain", 
+                    data = lnRR_data)
+summary(metareg_time)
+
+r2_time <- orchaRd::r2_ml(metareg_time) 
+r2_time
+```
+
+# 10.Formal meta-regression model that includes inverse sampling variance to test for file-drawer biases
+
+```{r}
+metareg_time <- rma.mv(lnRR ~ (1 / V_lnRR) + V_lnRR, V = V_lnRR, 
+                    random = list(~1|Study, 
+                                  ~1|residual), 
+                    test = "t", dfs = "contain", 
+                    data = lnRR_data)
+summary(metareg_time)
+
+
+r2_time_sv <- orchaRd::r2_ml(metareg_time) 
+r2_time_sv
+```
+
+```{r}
+lnRR_data <- lnRR_data %>% mutate(Year_c = Year..online. - mean(Year..online.))
+```
+
+```{r}
+metareg_time_c <- rma.mv(lnRR ~ Year_c + (1 / V_lnRR), V = (1/V_lnRR), 
+                    random = list(~1|Study, 
+                                  ~1|residual), 
+                    test = "t", dfs = "contain", 
+                    data = lnRR_data)
+summary(metareg_time_c)
+```
+
+# 11. 
