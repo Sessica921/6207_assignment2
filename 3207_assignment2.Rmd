@@ -115,27 +115,26 @@ flextable(i2) %>%
 ## Forest plot
 
 ```{r}
-orchaRd::orchard_plot(MLMA, mod = "1", group = "Study", data = lnRR_data, xlab = "log response ratio(lnRR)", angle = 45)
+orchaRd::orchard_plot(MLMA, mod = "1", group = "Study", data = lnRR_data, xlab = "log response ratio(lnRR)", angle = 45)+labs(title="Forest plot")
 ```
-Knowing this, we can extract the 95% confidence intervals which range from `r MLMA$ci.lb ` to `r MLMA$ci.ub `. In other words, 95% of the time we would expect the true mean to fall between lnRR values of `r MLMA$ci.lb ` to `r MLMA$ci.ub `. 
-
+From the results, we could know that the overall meta-analytic mean is `r MLMA$pred ` and the 95% confidence intervals which range from `r MLMA$ci.lb ` to `r MLMA$ci.ub `. In other words, 95% of the time we would expect the true mean to fall between lnRR values of `r MLMA$ci.lb ` to `r MLMA$ci.ub `. 
 That's to say, if we were to repeat the experiment many times, 95% of the confidence intervals constructed would contain the true meta-analytic mean.
-
-
 
 #7. Funnel plot for visually assessing the possibility of publication bias.
 ```{r}
 metafor::funnel(x = lnRR_data$lnRR, vi = lnRR_data$V_lnRR, 
                 yaxis = "seinv", digits = 2,
-                xlim=c(-10,10),ylim=c(1,100),
+                xlim= c(-1,1), ylim=c(1,100),
                 level = c(0.1, 0.05, 0.01), 
-                shade = c("white", "gray55", "gray 75"), las = 1, 
-                xlab = "Correlation Coefficient (r)", legend = TRUE)
+                shade = c("white", "gray35", "gray 75"), las = 1, 
+                xlab = "Correlation Coefficient (r)", 
+                legend = TRUE)
+                
 ```
 
 # 8. Time-lag plot assessing how effect sizes may or may not have changed through time
 ```{r}
-ggplot(lnRR_data, aes(y = lnRR, x = Year..online., size = 1/sqrt(V_lnRR))) + geom_point(alpha = 0.30) + geom_smooth(method = lm, col = "red", show.legend = FALSE) + labs(x = "Publication Year", y = "lnRR", size = "Precision (1/SE)") + theme_classic()
+ggplot(lnRR_data, aes(y = lnRR, x = Year..online., size = 1/sqrt(V_lnRR))) + geom_point(alpha = 0.30) + geom_smooth(method = lm, col = "red", show.legend = FALSE) + labs(x = "Year", y = "lnRR", size = "Precision (1/SE)") + theme_classic()+labs(title="Time-lag plot")
 ```
 
 # 9. Formal meta-regression model that includes year as a moderator (fixed effect) to test for time-lag bias
@@ -181,3 +180,8 @@ summary(metareg_time_c)
 ```
 
 # 11. 
+We know that the publication bias is "bias owing to the influence of research findings on submission, reviews and editorial decisions” (Møller & Jennions 2001), and Bias can result from: 1) methodological biases; (2) selective publication bias; and (3) citation bias(biological, methodological, publication practices).
+From chunks above, I think that it results from publication practices. It means that there are bias owing to the influence of research results due to decisions. Thus, these paper are not released. Because results showing strong effects are usually more likely to be published in higher impact journals than studies showing weak or invalid results. It may be result in different assessment level for effect type or different measure method in different paper. 
+
+# 12.
+Methodological approaches for individual studies, and biases therein, can contribute to the early inflation of effect sizes. In summary, the findings by Clement et al.(2022) suggest that large effect sizes in studies assessing the effects of acidification on fish behavior typically have small sample sizes but tend to be published and more cited in high-impact journals. Thus, the one- or two-hit preference for low sample sizes and the preference for publishing large effects seems to lead to an incorrect interpretation that ocean acidification will have widespread effects on fish behavior, with consequent broad ecological consequences. Besides, Research continues to cite earlier studies where effect sizes were unreasonable to promote the idea that acidification would broadly affect fish behavior and ecology, suggesting that a shift in thinking is still needed by many in the field. 
